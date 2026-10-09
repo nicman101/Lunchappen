@@ -229,7 +229,7 @@ button{cursor:pointer}
 </style>
 
 <style>html{color-scheme:light dark}body{margin:0;padding-top:env(safe-area-inset-top,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
-<script>window.LUNCHAPPEN_PWA=true</script>
+<script>window.LUNCHAPPEN_PWA=true;try{var t=localStorage.getItem('lunchappen.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
 <body>
 <div class="app">
@@ -631,6 +631,7 @@ function openSettings(){
   openSheet(
    '<div class="sh-head"><h3 id="sheet-title">Inställningar</h3><button class="iconbtn" data-act="close" aria-label="Stäng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'+
    '<div class="setlist">'+
+    '<div class="card field"><label id="lbl-theme">Utseende</label><div class="seg" role="group" aria-labelledby="lbl-theme">'+[['auto','Automatiskt'],['light','Ljust'],['dark','Mörkt']].map(([k,l])=>'<button type="button" data-theme-pick="'+k+'" aria-pressed="'+((state.settings.theme||'auto')===k)+'">'+l+'</button>').join('')+'</div><p style="margin:2px 0 0;font-size:13px;color:var(--muted)">Automatiskt följer telefonens inställning.</p></div>'+
     '<div class="card field"><label for="s-cur">Valuta</label><select id="s-cur">'+curs.map(c=>'<option'+(state.settings.currency===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
     '<label class="switch'+(state.settings.autoPlace!==false?' on':'')+'" id="sw-loc"><span class="txt"><b>Hitta restaurang automatiskt</b><span>Använder din position och OpenStreetMap. Positionen skickas bara för att söka restauranger och sparas med utlägget i telefonen.</span></span><span class="tgl"><input type="checkbox" id="s-loc"'+(state.settings.autoPlace!==false?' checked':'')+'><i></i></span></label>'+
     '<div class="card"><b>Exportera</b><p>CSV öppnas i Excel eller Numbers. Kolumner: datum, måltid, typ, restaurang, belopp, deltagare och syfte.</p><div class="two" style="margin-top:12px"><button class="btn ghost" data-act="csv">Ladda ner CSV</button><button class="btn ghost" data-act="copycsv">Kopiera CSV</button></div></div>'+
@@ -665,6 +666,7 @@ document.addEventListener('click',ev=>{
   if(t.dataset.shift){ui.anchor=shift(ui.mode,ui.anchor,+t.dataset.shift);render();return}
   if(t.dataset.filter){ui.filter=t.dataset.filter;render();return}
   if(t.dataset.meal&&sheetCtx){sheetCtx.e.meal=t.dataset.meal;document.querySelectorAll('[data-meal]').forEach(b=>{const on=b.dataset.meal===t.dataset.meal;b.setAttribute('aria-pressed',on);b.style.color=on?MEALS[b.dataset.meal].c:'inherit'});return}
+  if(t.dataset.themePick){state.settings.theme=t.dataset.themePick;save();applyTheme();document.querySelectorAll('[data-theme-pick]').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   if(t.dataset.place){$('#f-place').value=t.dataset.place;if(sheetCtx)sheetCtx.typed=true;document.querySelectorAll('.nb').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   const act=t.dataset.act;if(!act)return;
   if(act==='close')closeSheet();
@@ -708,7 +710,17 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPro
 /* logo: same artwork as the app icon */
 $('#logo').src='data:image/svg+xml,'+encodeURIComponent("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\">\n  <defs>\n    <linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">\n      <stop offset=\"0\" stop-color=\"#FF6A4A\"/>\n      <stop offset=\"0.55\" stop-color=\"#E5432B\"/>\n      <stop offset=\"1\" stop-color=\"#9E2416\"/>\n    </linearGradient>\n    <radialGradient id=\"glow\" cx=\"0.3\" cy=\"0.2\" r=\"0.8\">\n      <stop offset=\"0\" stop-color=\"#FFFFFF\" stop-opacity=\"0.35\"/>\n      <stop offset=\"1\" stop-color=\"#FFFFFF\" stop-opacity=\"0\"/>\n    </radialGradient>\n    <linearGradient id=\"coin\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">\n      <stop offset=\"0\" stop-color=\"#FFD27A\"/>\n      <stop offset=\"1\" stop-color=\"#F2A23A\"/>\n    </linearGradient>\n  </defs>\n  <rect width=\"512\" height=\"512\" fill=\"url(#bg)\"/>\n  <rect width=\"512\" height=\"512\" fill=\"url(#glow)\"/>\n  <!-- plate -->\n  <circle cx=\"256\" cy=\"268\" r=\"150\" fill=\"#FFFFFF\" fill-opacity=\"0.12\"/>\n  <circle cx=\"256\" cy=\"268\" r=\"150\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"22\"/>\n  <circle cx=\"256\" cy=\"268\" r=\"98\" fill=\"none\" stroke=\"#FFFFFF\" stroke-opacity=\"0.45\" stroke-width=\"10\"/>\n  <!-- fork -->\n  <g fill=\"#FFFFFF\">\n    <rect x=\"140\" y=\"96\" width=\"14\" height=\"70\" rx=\"7\"/>\n    <rect x=\"166\" y=\"96\" width=\"14\" height=\"70\" rx=\"7\"/>\n    <rect x=\"192\" y=\"96\" width=\"14\" height=\"70\" rx=\"7\"/>\n    <path d=\"M140 150 h66 v22 a33 33 0 0 1 -22 31 v68 a11 11 0 0 1 -22 0 v-68 a33 33 0 0 1 -22 -31z\"/>\n  </g>\n  <!-- coin -->\n  <circle cx=\"352\" cy=\"352\" r=\"78\" fill=\"url(#coin)\" stroke=\"#FFFFFF\" stroke-width=\"12\"/>\n  <text x=\"352\" y=\"377\" text-anchor=\"middle\" font-family=\"Helvetica, Arial, sans-serif\" font-weight=\"800\" font-size=\"72\" fill=\"#7A2A10\">kr</text>\n</svg>\n");
 
-load();render();
+/* theme: auto follows the device; light/dark force it */
+const hostTheme=document.documentElement.getAttribute('data-theme');
+function applyTheme(){
+  const t=state.settings.theme||'auto',root=document.documentElement;
+  if(t==='auto'){if(hostTheme&&!window.LUNCHAPPEN_PWA)root.setAttribute('data-theme',hostTheme);else root.removeAttribute('data-theme')}
+  else root.setAttribute('data-theme',t);
+  try{localStorage.setItem('lunchappen.theme',t)}catch(e){}
+  const dark=t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m=>{m.setAttribute('content',dark?'#0E0D13':'#F2F1F5');m.removeAttribute('media')});
+}
+load();applyTheme();render();
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&window.LUNCHAPPEN_PWA){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 })();
 </script>
