@@ -148,7 +148,7 @@ button{cursor:pointer}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:7px 14px;font-weight:600;font-size:13.5px;white-space:nowrap}
 .chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
-.search{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:11px 14px}
+.search{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:11px 14px;font-size:16px}
 
 /* bottom bar */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:0 16px calc(12px + env(safe-area-inset-bottom,0px));pointer-events:none}
@@ -181,7 +181,7 @@ button{cursor:pointer}
 .mealpick button[aria-pressed="true"]{border-color:var(--mc);background:color-mix(in srgb,var(--mc) 14%,var(--surface))}
 .field{display:flex;flex-direction:column;gap:6px}
 .field label{font-size:13px;font-weight:650;color:var(--muted)}
-.field input,.field textarea,.field select{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;width:100%;min-width:0}
+.field input,.field textarea,.field select{font-size:16px;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;width:100%;min-width:0}
 .field textarea{resize:vertical;min-height:64px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .quick{display:flex;gap:6px;flex-wrap:wrap}
@@ -585,8 +585,15 @@ const PIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-wid
 const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter'];
 const RADIUS=150;
 function distM(a,b,c,d){const t=Math.PI/180,x=(d-b)*t*Math.cos((a+c)/2*t),y=(c-a)*t;return Math.round(Math.sqrt(x*x+y*y)*6371000)}
-function getPos(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej({code:0});navigator.geolocation.getCurrentPosition(p=>res(p.coords),rej,{enableHighAccuracy:true,timeout:12000,maximumAge:60000})})}
+/* iOS app: talk to the native shell (location, Apple Maps, share sheet, haptics) */
+const NATIVE=!!(window.LUNCHAPPEN_NATIVE&&window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.native);
+const nativeWait={};let nativeSeq=0;
+window.__nativeResolve=function(id,r){const w=nativeWait[id];if(!w)return;delete nativeWait[id];if(r&&r.e)w.rej(r.e);else w.res(r?r.v:null)};
+function nativeCall(type,data){return new Promise((res,rej)=>{const id='n'+(++nativeSeq);nativeWait[id]={res,rej};window.webkit.messageHandlers.native.postMessage(Object.assign({type:type,id:id},data||{}))})}
+function nativeSend(type,data){if(NATIVE)try{window.webkit.messageHandlers.native.postMessage(Object.assign({type:type},data||{}))}catch(e){}}
+function getPos(){if(NATIVE)return nativeCall('location').catch(e=>{throw {code:e==='denied'?1:2}});return new Promise((res,rej)=>{if(!navigator.geolocation)return rej({code:0});navigator.geolocation.getCurrentPosition(p=>res(p.coords),rej,{enableHighAccuracy:true,timeout:12000,maximumAge:60000})})}
 async function fetchNearby(lat,lon){
+  if(NATIVE)return nativeCall('nearby',{lat:lat,lon:lon,radius:RADIUS});
   const q='[out:json][timeout:8];nwr(around:'+RADIUS+','+lat+','+lon+')[amenity~"^(restaurant|cafe|fast_food|bar|pub|food_court|biergarten)$"][name];out center 30;';
   for(const url of OVERPASS){
     try{
@@ -649,7 +656,7 @@ function submitEntry(){
     state.entries.push(e);
   }
   save();closeSheet();render();
-  const bw=budgetWarning(prevEntries,e);if(bw)toast(bw,true);else toast(msg);
+  const bw=budgetWarning(prevEntries,e);nativeSend('haptic',{kind:bw&&/överskriden|över veckobudgeten/.test(bw)?'warning':'success'});if(bw)toast(bw,true);else toast(msg);
 }
 function openSettings(){
   const curs=['SEK','EUR','NOK','DKK','USD','GBP'];
@@ -659,7 +666,7 @@ function openSettings(){
     '<div class="card field"><label id="lbl-theme">Utseende</label><div class="seg" role="group" aria-labelledby="lbl-theme">'+[['auto','Automatiskt'],['light','Ljust'],['dark','Mörkt']].map(([k,l])=>'<button type="button" data-theme-pick="'+k+'" aria-pressed="'+((state.settings.theme||'auto')===k)+'">'+l+'</button>').join('')+'</div><p style="margin:2px 0 0;font-size:13px;color:var(--muted)">Automatiskt följer telefonens inställning.</p></div>'+
     '<button class="navrow" data-act="budget"><span class="mid"><b>Veckobudget</b><span>'+budgetSummary()+'</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>'+
     '<div class="card field"><label for="s-cur">Valuta</label><select id="s-cur">'+curs.map(c=>'<option'+(state.settings.currency===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
-    '<label class="switch'+(state.settings.autoPlace!==false?' on':'')+'" id="sw-loc"><span class="txt"><b>Hitta restaurang automatiskt</b><span>Använder din position och OpenStreetMap. Positionen skickas bara för att söka restauranger och sparas med utlägget i telefonen.</span></span><span class="tgl"><input type="checkbox" id="s-loc"'+(state.settings.autoPlace!==false?' checked':'')+'><i></i></span></label>'+
+    '<label class="switch'+(state.settings.autoPlace!==false?' on':'')+'" id="sw-loc"><span class="txt"><b>Hitta restaurang automatiskt</b><span>Använder din position och '+(NATIVE?'Apple Kartor':'OpenStreetMap')+'. Positionen skickas bara för att söka restauranger och sparas med utlägget i telefonen.</span></span><span class="tgl"><input type="checkbox" id="s-loc"'+(state.settings.autoPlace!==false?' checked':'')+'><i></i></span></label>'+
     '<div class="card"><b>Exportera</b><p>CSV öppnas i Excel eller Numbers. Kolumner: datum, måltid, typ, restaurang, belopp, deltagare och syfte.</p><div class="two" style="margin-top:12px"><button class="btn ghost" data-act="csv">Ladda ner CSV</button><button class="btn ghost" data-act="copycsv">Kopiera CSV</button></div></div>'+
     '<div class="card"><b>Säkerhetskopia</b><p>Datan sparas bara i den här enheten. Spara en kopia ibland, eller flytta datan till en ny telefon.</p><div class="two" style="margin-top:12px"><button class="btn ghost" data-act="backup">Spara kopia</button><label class="btn ghost" style="text-align:center;cursor:pointer">Återställ<input type="file" id="s-import" accept="application/json,.json" hidden></label></div></div>'+
     '<div class="card"><b>Lägg till på hemskärmen</b><ol class="howto"><li><b>iPhone:</b> öppna i Safari, tryck på Dela och välj Lägg till på hemskärmen.</li><li><b>Android:</b> öppna i Chrome, tryck på menyn och välj Installera app.</li></ol><button class="btn ghost" data-act="install" id="s-install" style="margin-top:12px" hidden>Installera nu</button></div>'+
@@ -674,6 +681,7 @@ function toCSV(){
   return rows.map(r=>r.map(v=>{v=String(v==null?'':v);return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(';')).join('\r\n');
 }
 function download(name,text,type){
+  if(NATIVE){nativeSend('share',{name:name,text:(/csv/.test(type)?'\ufeff':'')+text});return}
   try{const b=new Blob(['﻿'+text],{type:type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Filen laddas ner')}catch(e){toast('Nedladdningen gick inte. Använd Kopiera CSV i stället.')}
 }
 
@@ -803,6 +811,7 @@ function applyTheme(){
   else root.setAttribute('data-theme',t);
   try{localStorage.setItem('lunchappen.theme',t)}catch(e){}
   const dark=t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);
+  nativeSend('theme',{mode:t});
   document.querySelectorAll('meta[name="theme-color"]').forEach(m=>{m.setAttribute('content',dark?'#0E0D13':'#F2F1F5');m.removeAttribute('media')});
 }
 load();applyTheme();render();
