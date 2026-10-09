@@ -92,8 +92,18 @@ button{cursor:pointer}
 .link{border:0;background:none;color:var(--accent);font-weight:600;font-size:14px;padding:4px}
 .list{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
 .item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:0;background:none;width:100%;text-align:left;border-top:1px solid var(--line)}
-.item:first-child{border-top:0}
+.sw{position:relative;overflow:hidden;border-top:1px solid var(--line)}
+.sw:first-child{border-top:0}
+.sw .item{border-top:0;background:var(--surface);position:relative;z-index:1;transition:transform .22s cubic-bezier(.2,.8,.2,1);touch-action:pan-y}
+.sw.drag .item{transition:none}
+.sw-del{position:absolute;top:0;right:0;bottom:0;width:96px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.sw-del svg{width:20px;height:20px}
+.sw-del{visibility:hidden}
+.sw.reveal .sw-del{visibility:visible}
 .item:active{background:var(--surface-2)}
+.hint{font-size:12.5px;color:var(--muted);margin:-6px 0 0}
+.toast .undo{border:0;background:none;color:inherit;font-weight:800;text-decoration:underline;margin-left:10px;padding:2px 4px;pointer-events:auto}
+.toast.has-undo{pointer-events:auto}
 .item .ic{flex:none;width:40px;height:40px;border-radius:13px;display:grid;place-items:center}
 .item .ic svg{width:20px;height:20px}
 .item .mid{flex:1;min-width:0}
@@ -391,9 +401,39 @@ function mealIcon(m,size){const M=MEALS[m];return '<span class="ic" style="backg
 function itemHTML(e){
   const d=parseLocal(e.date);const M=MEALS[e.meal]||MEALS.lunch;
   const sub=[M.n,pad(d.getHours())+':'+pad(d.getMinutes()),e.type==='representation'&&e.guests?e.guests:''].filter(Boolean).join(' · ');
-  return '<button class="item" data-edit="'+esc(e.id)+'">'+mealIcon(e.meal)+
+  return '<div class="sw"><button class="sw-del" data-del="'+esc(e.id)+'" tabindex="-1">'+TRASH+'Radera</button><button class="item" data-edit="'+esc(e.id)+'">'+mealIcon(e.meal)+
     '<span class="mid"><span class="t">'+esc(e.place||'Restaurang')+'</span><span class="s">'+esc(sub)+'</span></span>'+
-    '<span class="amt num">'+fmt(e.amount)+'<br><span class="tag '+(e.type==='representation'?'repr">Repr':'pers">Privat')+'</span></span></button>';
+    '<span class="amt num">'+fmt(e.amount)+'<br><span class="tag '+(e.type==='representation'?'repr">Repr':'pers">Privat')+'</span></span></button></div>';
+}
+const TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+
+/* swipe left on a list row to reveal Radera */
+const SW_W=96;let swOpen=null,swDrag=null;
+function swSet(row,x){row.querySelector('.item').style.transform=x?'translateX('+x+'px)':'';clearTimeout(row._swT);if(x)row.classList.add('reveal');else row._swT=setTimeout(()=>row.classList.remove('reveal'),240)}
+function swClose(){if(swOpen){swSet(swOpen,0);swOpen=null}}
+document.addEventListener('pointerdown',ev=>{
+  const row=ev.target.closest('.sw');
+  if(swOpen&&swOpen!==row)swClose();
+  if(!row||ev.target.closest('.sw-del')||ev.pointerType==='mouse'&&ev.button!==0)return;
+  swDrag={row:row,x0:ev.clientX,y0:ev.clientY,base:swOpen===row?-SW_W:0,dx:0,on:false,moved:false};
+});
+document.addEventListener('pointermove',ev=>{
+  const d=swDrag;if(!d)return;
+  const dx=ev.clientX-d.x0,dy=ev.clientY-d.y0;
+  if(!d.on){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;if(Math.abs(dy)>Math.abs(dx)){swDrag=null;return}d.on=true;d.row.classList.add('drag')}
+  d.moved=true;d.dx=Math.max(-SW_W*1.4,Math.min(0,d.base+dx));swSet(d.row,d.dx);
+});
+function swEnd(){
+  const d=swDrag;swDrag=null;if(!d||!d.on)return;
+  d.row.classList.remove('drag');
+  if(d.dx<-SW_W/2){swSet(d.row,-SW_W);swOpen=d.row}else{swSet(d.row,0);if(swOpen===d.row)swOpen=null}
+  d.row.dataset.swiped='1';setTimeout(()=>{delete d.row.dataset.swiped},50);
+}
+document.addEventListener('pointerup',swEnd);document.addEventListener('pointercancel',swEnd);
+function deleteEntry(id){
+  const i=state.entries.findIndex(e=>e.id===id);if(i<0)return;
+  const removed=state.entries.splice(i,1)[0];swOpen=null;save();render();
+  toast('Utlägget är raderat',false,()=>{state.entries.splice(Math.min(i,state.entries.length),0,removed);save();render();toast('Utlägget är tillbaka')});
 }
 function sorted(list){return list.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)}
 function bannerHTML(){
@@ -504,7 +544,7 @@ function renderList(reprOnly){
   const head=reprOnly?
     '<h2 class="view-title">Representation</h2><p class="muted" style="margin:-8px 0 0">Alla måltider du markerat som representation, med deltagare och syfte.</p>'+
     '<div class="card"><div class="kpis"><div class="kpi"><div class="k">I år</div><div class="v num">'+fmt(sum(inRange(range('year',new Date())),e=>e.type==='representation'))+'</div></div><div class="kpi"><div class="k">Denna månad</div><div class="v num">'+fmt(sum(inRange(range('month',new Date())),e=>e.type==='representation'))+'</div></div></div></div>'
-    :'<h2 class="view-title">Historik</h2><div class="chips" role="group" aria-label="Filter">'+[['all','Alla'],['personlig','Personligt'],['representation','Representation']].map(([k,l])=>'<button class="chip" data-filter="'+k+'" aria-pressed="'+(ui.filter===k)+'">'+l+'</button>').join('')+'</div>';
+    :'<h2 class="view-title">Historik</h2><p class="hint">Svep ett utlägg åt vänster för att radera det, eller tryck på det för att ändra.</p><div class="chips" role="group" aria-label="Filter">'+[['all','Alla'],['personlig','Personligt'],['representation','Representation']].map(([k,l])=>'<button class="chip" data-filter="'+k+'" aria-pressed="'+(ui.filter===k)+'">'+l+'</button>').join('')+'</div>';
   $('#view').innerHTML=(reprOnly?'':bannerHTML())+head+
    '<input class="search" id="q" type="search" placeholder="Sök restaurang, deltagare, syfte…" value="'+esc(ui.q)+'" aria-label="Sök">'+
    '<div id="groups">'+(groups.length?groups.map(g=>'<div class="dayhead"><span>'+esc(dayLabel(g.d))+'</span><span class="num">'+fmt(sum(g.items))+'</span></div><div class="list">'+g.items.map(itemHTML).join('')+'</div>').join(''):
@@ -621,8 +661,7 @@ async function locate(){
   list.sort((a,b)=>(a.d-(a.known?40:0))-(b.d-(b.known?40:0)));
   const top=list.slice(0,6);
   if(!top.length){box.innerHTML=nearStatus(netFail?'Kunde inte nå kartan. Skriv in restaurangen själv.':'Inga restauranger hittades inom '+RADIUS+' m.');return}
-  const inp=$('#f-place');let msg='Restauranger nära dig';
-  if(inp&&!ctx.typed&&!inp.value.trim()){inp.value=top[0].name;msg='Ifylld automatiskt: <b>'+esc(top[0].name)+'</b>, '+top[0].d+' m bort. Fel ställe? Välj ett annat.'}
+  const inp=$('#f-place');const msg='Restauranger nära dig. Tryck för att välja.';
   box.innerHTML=nearStatus(msg)+'<div class="quick">'+top.map(x=>'<button type="button" class="nb" data-place="'+esc(x.name)+'" aria-pressed="'+(inp&&inp.value===x.name)+'">'+esc(x.name)+'<small>'+x.d+' m</small></button>').join('')+'</div>';
 }
 function submitEntry(){
@@ -655,7 +694,7 @@ function openSettings(){
     '<div class="card field"><label id="lbl-theme">Utseende</label><div class="seg" role="group" aria-labelledby="lbl-theme">'+[['auto','Automatiskt'],['light','Ljust'],['dark','Mörkt']].map(([k,l])=>'<button type="button" data-theme-pick="'+k+'" aria-pressed="'+((state.settings.theme||'auto')===k)+'">'+l+'</button>').join('')+'</div><p style="margin:2px 0 0;font-size:13px;color:var(--muted)">Automatiskt följer telefonens inställning.</p></div>'+
     '<button class="navrow" data-act="budget"><span class="mid"><b>Veckobudget</b><span>'+budgetSummary()+'</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>'+
     '<div class="card field"><label for="s-cur">Valuta</label><select id="s-cur">'+curs.map(c=>'<option'+(state.settings.currency===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
-    '<label class="switch'+(state.settings.autoPlace!==false?' on':'')+'" id="sw-loc"><span class="txt"><b>Hitta restaurang automatiskt</b><span>Använder din position och '+(NATIVE?'Apple Kartor':'OpenStreetMap')+'. Positionen skickas bara för att söka restauranger och sparas med utlägget i telefonen.</span></span><span class="tgl"><input type="checkbox" id="s-loc"'+(state.settings.autoPlace!==false?' checked':'')+'><i></i></span></label>'+
+    '<label class="switch'+(state.settings.autoPlace!==false?' on':'')+'" id="sw-loc"><span class="txt"><b>Föreslå restauranger nära mig</b><span>Använder din position och '+(NATIVE?'Apple Kartor':'OpenStreetMap')+'. Positionen skickas bara för att söka restauranger och sparas med utlägget i telefonen.</span></span><span class="tgl"><input type="checkbox" id="s-loc"'+(state.settings.autoPlace!==false?' checked':'')+'><i></i></span></label>'+
     '<div class="card"><b>Exportera</b><p>CSV öppnas i Excel eller Numbers. Kolumner: datum, måltid, typ, restaurang, belopp, deltagare och syfte.</p><div class="two" style="margin-top:12px"><button class="btn ghost" data-act="csv">Ladda ner CSV</button><button class="btn ghost" data-act="copycsv">Kopiera CSV</button></div></div>'+
     '<div class="card"><b>Säkerhetskopia</b><p>Datan sparas bara i den här enheten. Spara en kopia ibland, eller flytta datan till en ny telefon.</p><div class="two" style="margin-top:12px"><button class="btn ghost" data-act="backup">Spara kopia</button><label class="btn ghost" style="text-align:center;cursor:pointer">Återställ<input type="file" id="s-import" accept="application/json,.json" hidden></label></div></div>'+
     '<div class="card"><b>Lägg till på hemskärmen</b><ol class="howto"><li><b>iPhone:</b> öppna i Safari, tryck på Dela och välj Lägg till på hemskärmen.</li><li><b>Android:</b> öppna i Chrome, tryck på menyn och välj Installera app.</li></ol><button class="btn ghost" data-act="install" id="s-install" style="margin-top:12px" hidden>Installera nu</button></div>'+
@@ -675,7 +714,9 @@ function download(name,text,type){
 }
 
 let toastT;
-function toast(m,warn){const t=$('#toast');t.classList.toggle('warn',!!warn);if(warn)t.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg><span>'+esc(m)+'</span>';else t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),warn?5500:2600)}
+function toast(m,warn,undo){const t=$('#toast');t.classList.toggle('warn',!!warn);t.classList.toggle('has-undo',!!undo);if(warn)t.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg><span>'+esc(m)+'</span>';else t.textContent=m;
+  if(undo){const b=document.createElement('button');b.className='undo';b.textContent='Ångra';b.onclick=()=>{t.classList.remove('on','has-undo');undo()};t.appendChild(b)}
+  t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on','has-undo'),warn||undo?5500:2600)}
 
 /* ---------- weekly budget ---------- */
 function budget(){return Object.assign({amount:0,scope:'lunch',warn:true},state.settings.budget||{})}
@@ -734,6 +775,8 @@ function saveBudget(){
 /* ---------- events ---------- */
 document.addEventListener('click',ev=>{
   const t=ev.target.closest('button,[data-edit]');if(!t)return;
+  if(t.dataset.del){deleteEntry(t.dataset.del);return}
+  if(t.dataset.edit){const row=t.closest('.sw');if(row&&(row.dataset.swiped||row===swOpen)){if(row===swOpen&&!row.dataset.swiped)swClose();return}}
   if(t.dataset.tab){ui.tab=t.dataset.tab;window.scrollTo(0,0);render();return}
   if(t.id==='btn-add'){openEntry(null);return}
   if(t.id==='btn-settings'){openSettings();return}
@@ -756,7 +799,7 @@ document.addEventListener('click',ev=>{
   else if(act==='clear-samples'){state.entries=[];state.sampleMode=false;save();render();toast('Exempeldatan är borttagen')}
   else if(act==='delete'){
     if(!sheetCtx.armed){sheetCtx.armed=true;t.classList.add('armed');t.textContent='Tryck igen för att radera';return}
-    state.entries=state.entries.filter(e=>e.id!==sheetCtx.id);save();closeSheet();render();toast('Utlägget är raderat');
+    const delId=sheetCtx.id;closeSheet();deleteEntry(delId);
   }
   else if(act==='csv')download('lunchappen-'+toLocalStr(new Date()).slice(0,10)+'.csv',toCSV(),'text/csv;charset=utf-8');
   else if(act==='copycsv'){
@@ -776,7 +819,7 @@ document.addEventListener('change',ev=>{
   if(t.id==='f-repr'){$('#sw').classList.toggle('on',t.checked);$('#sw-sub').textContent=t.checked?'Ange deltagare och syfte nedan':'Av: registreras som personligt utlägg';$('#rf').hidden=!t.checked;if(t.checked)setTimeout(()=>$('#f-guests').focus(),50)}
   else if(t.id==='f-date'&&sheetCtx&&!sheetCtx.id){const d=parseLocal(t.value);if(!isNaN(d)){const m=mealFor(d);const b=document.querySelector('[data-meal="'+m+'"]');b&&b.click()}}
   else if(t.id==='b-warn'){$('#sw-bw').classList.toggle('on',t.checked)}
-  else if(t.id==='s-loc'){state.settings.autoPlace=t.checked;$('#sw-loc').classList.toggle('on',t.checked);save();toast(t.checked?'Restaurang hittas automatiskt':'Automatisk restaurang avstängd')}
+  else if(t.id==='s-loc'){state.settings.autoPlace=t.checked;$('#sw-loc').classList.toggle('on',t.checked);save();toast(t.checked?'Restaurangförslag på':'Restaurangförslag av')}
   else if(t.id==='s-cur'){state.settings.currency=t.value;save();render();toast('Valuta: '+t.value)}
   else if(t.id==='s-import'&&t.files[0]){
     const r=new FileReader();r.onload=()=>{try{const s=JSON.parse(r.result);if(!s||!Array.isArray(s.entries))throw 0;state={entries:s.entries,settings:s.settings||{currency:'SEK'},sampleMode:false};save();closeSheet();render();toast(s.entries.length+' utlägg återställda')}catch(e){toast('Filen kunde inte läsas. Välj en kopia som sparats från Lunchappen.')}};r.readAsText(t.files[0]);

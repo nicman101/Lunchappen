@@ -41,7 +41,7 @@ fs.writeFileSync(path.join(out,'manifest.webmanifest'),JSON.stringify({
  background_color:'#F2F1F5',theme_color:'#E5432B',
  icons:[{src:'icon-192.png',sizes:'192x192',type:'image/png'},{src:'icon-512.png',sizes:'512x512',type:'image/png'},{src:'icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'},{src:'icon.svg',sizes:'any',type:'image/svg+xml'}]
 },null,2));
-fs.writeFileSync(path.join(out,'sw.js'),`const CACHE='lunchappen-v5';
+fs.writeFileSync(path.join(out,'sw.js'),`const CACHE='lunchappen-v6';
 const SHELL=['./','index.html','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','apple-touch-icon.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
