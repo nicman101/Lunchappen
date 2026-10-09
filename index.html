@@ -172,6 +172,7 @@ button{cursor:pointer}
 .amount{background:var(--surface);border-radius:22px;padding:16px;display:flex;align-items:baseline;justify-content:center;gap:6px;box-shadow:var(--shadow)}
 .amount input{border:0;background:none;outline:none;font-family:var(--f-display);font-weight:700;font-size:52px;letter-spacing:-.035em;width:100%;max-width:240px;text-align:right;font-variant-numeric:tabular-nums;padding:0}
 .amount input::placeholder{color:var(--surface-2)}
+.field .amount input{border:0;background:none;padding:0;border-radius:0}
 .amount span{font-family:var(--f-display);font-size:24px;font-weight:600;color:var(--muted)}
 .amount:focus-within{outline:2.5px solid var(--accent);outline-offset:2px}
 .mealpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -224,6 +225,28 @@ button{cursor:pointer}
 
 .toast{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--fg);color:var(--bg);padding:11px 16px;border-radius:14px;font-weight:600;font-size:14px;z-index:30;opacity:0;transition:all .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
 .toast.on{opacity:1;transform:translate(-50%,0)}
+.toast.warn{background:var(--accent);color:var(--accent-ink);display:flex;gap:10px;align-items:flex-start;text-align:left;padding:13px 16px;width:max-content}
+.toast.warn svg{width:20px;height:20px;flex:none;margin-top:1px}
+.bstat .row2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.bstat .big{font-family:var(--f-display);font-size:34px;font-weight:700;letter-spacing:-.03em}
+.bstat .of{color:var(--muted);font-weight:600}
+.pbar{height:12px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin:12px 0 8px;position:relative}
+.pbar i{display:block;height:100%;border-radius:99px;background:var(--ok);transition:width .3s}
+.pbar.near i{background:var(--m-frukost)}
+.pbar.over i{background:var(--accent)}
+.bnote{font-size:13.5px;font-weight:650}
+.bnote.over{color:var(--accent)}
+.whist{display:flex;flex-direction:column;gap:10px}
+.wrow{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;font-size:13.5px}
+.wrow .bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;position:relative}
+.wrow .bar i{display:block;height:100%;background:var(--personal);border-radius:99px}
+.wrow.over .bar i{background:var(--accent)}
+.wrow .bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fg);opacity:.55}
+.wrow.over .amt{color:var(--accent);font-weight:700}
+.navrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+.navrow .mid{flex:1;min-width:0}
+.navrow .mid span{display:block;font-size:13px;color:var(--muted)}
+.navrow>svg{width:18px;height:18px;color:var(--muted)}
 
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -608,6 +631,7 @@ async function locate(){
 }
 function submitEntry(){
   const s=$('#sheet');const c=sheetCtx;if(!c)return;
+  const prevEntries=state.sampleMode?[]:state.entries.map(x=>Object.assign({},x));
   const amt=parseAmount(s.querySelector('#f-amount').value);
   const err=s.querySelector('#f-err');
   if(!(amt>0)){err.textContent='Ange ett belopp, till exempel 129 eller 129,50.';err.hidden=false;s.querySelector('#f-amount').focus();return}
@@ -624,7 +648,8 @@ function submitEntry(){
     else msg=fmt(amt)+' sparat som '+(repr?'representation':'personligt');
     state.entries.push(e);
   }
-  save();closeSheet();render();toast(msg);
+  save();closeSheet();render();
+  const bw=budgetWarning(prevEntries,e);if(bw)toast(bw,true);else toast(msg);
 }
 function openSettings(){
   const curs=['SEK','EUR','NOK','DKK','USD','GBP'];
@@ -632,6 +657,7 @@ function openSettings(){
    '<div class="sh-head"><h3 id="sheet-title">Inställningar</h3><button class="iconbtn" data-act="close" aria-label="Stäng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'+
    '<div class="setlist">'+
     '<div class="card field"><label id="lbl-theme">Utseende</label><div class="seg" role="group" aria-labelledby="lbl-theme">'+[['auto','Automatiskt'],['light','Ljust'],['dark','Mörkt']].map(([k,l])=>'<button type="button" data-theme-pick="'+k+'" aria-pressed="'+((state.settings.theme||'auto')===k)+'">'+l+'</button>').join('')+'</div><p style="margin:2px 0 0;font-size:13px;color:var(--muted)">Automatiskt följer telefonens inställning.</p></div>'+
+    '<button class="navrow" data-act="budget"><span class="mid"><b>Veckobudget</b><span>'+budgetSummary()+'</span></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg></button>'+
     '<div class="card field"><label for="s-cur">Valuta</label><select id="s-cur">'+curs.map(c=>'<option'+(state.settings.currency===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
     '<label class="switch'+(state.settings.autoPlace!==false?' on':'')+'" id="sw-loc"><span class="txt"><b>Hitta restaurang automatiskt</b><span>Använder din position och OpenStreetMap. Positionen skickas bara för att söka restauranger och sparas med utlägget i telefonen.</span></span><span class="tgl"><input type="checkbox" id="s-loc"'+(state.settings.autoPlace!==false?' checked':'')+'><i></i></span></label>'+
     '<div class="card"><b>Exportera</b><p>CSV öppnas i Excel eller Numbers. Kolumner: datum, måltid, typ, restaurang, belopp, deltagare och syfte.</p><div class="two" style="margin-top:12px"><button class="btn ghost" data-act="csv">Ladda ner CSV</button><button class="btn ghost" data-act="copycsv">Kopiera CSV</button></div></div>'+
@@ -652,7 +678,61 @@ function download(name,text,type){
 }
 
 let toastT;
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600)}
+function toast(m,warn){const t=$('#toast');t.classList.toggle('warn',!!warn);if(warn)t.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg><span>'+esc(m)+'</span>';else t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),warn?5500:2600)}
+
+/* ---------- weekly budget ---------- */
+function budget(){return Object.assign({amount:0,scope:'lunch',warn:true},state.settings.budget||{})}
+function budgetCounts(e,b){return e.type!=='representation'&&(b.scope==='all'||e.meal==='lunch')}
+function budgetSpent(list,r,b){return list.reduce((t,e)=>{const d=parseLocal(e.date);return t+(d>=r.start&&d<r.end&&budgetCounts(e,b)?e.amount:0)},0)}
+function scopeName(b){return b.scope==='all'?'måltider':'lunch'}
+function budgetSummary(){const b=budget();if(!b.amount)return 'Ingen budget satt';const sp=budgetSpent(state.entries,range('week',new Date()),b);return fmt(sp)+' av '+fmt(b.amount)+' denna vecka'}
+function budgetWarning(prev,e){
+  const b=budget();if(!b.amount||!b.warn||!budgetCounts(e,b))return '';
+  const r=range('week',parseLocal(e.date)),before=budgetSpent(prev,r,b),after=budgetSpent(state.entries,r,b);
+  if(after<=before)return '';
+  const wk=isoWeek(r.start).week;
+  if(after>b.amount&&before<=b.amount)return 'Veckobudgeten är överskriden. Du har lagt '+fmt(after)+' på '+scopeName(b)+' vecka '+wk+', budgeten är '+fmt(b.amount)+'.';
+  if(after>b.amount)return 'Du ligger nu '+fmt(after-b.amount)+' över veckobudgeten för vecka '+wk+'.';
+  if(after>=b.amount*.8&&before<b.amount*.8)return 'Du har använt '+Math.round(after/b.amount*100)+' % av veckobudgeten. '+fmt(b.amount-after)+' kvar vecka '+wk+'.';
+  return '';
+}
+function openBudget(){
+  const b=budget(),r=range('week',new Date()),sp=budgetSpent(state.entries,r,b);
+  const pct=b.amount?sp/b.amount:0,cls=!b.amount?'':pct>1?'over':pct>=.8?'near':'';
+  let status;
+  if(!b.amount)status='<p class="muted" style="margin:4px 0 0">Sätt en veckobudget nedan så håller appen koll och varnar när du går över.</p>';
+  else status='<div class="row2"><span class="big num">'+fmt(sp)+'</span><span class="of num">av '+fmt(b.amount)+'</span></div>'+
+    '<div class="pbar '+cls+'" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+Math.min(100,Math.round(pct*100))+'"><i style="width:'+Math.min(100,pct*100)+'%"></i></div>'+
+    '<div class="bnote '+(cls==='over'?'over':'')+' num">'+(sp>b.amount?fmt(sp-b.amount)+' över budget':fmt(b.amount-sp)+' kvar · '+Math.round(pct*100)+' % använt')+'</div>';
+  let hist='';
+  if(b.amount){
+    const rows=[];for(let i=7;i>=0;i--){const wr=range('week',addDays(new Date(),-7*i));rows.push({w:isoWeek(wr.start).week,v:budgetSpent(state.entries,wr,b),cur:i===0})}
+    const mx=Math.max(b.amount,...rows.map(x=>x.v))*1.05;
+    const over=rows.filter(x=>x.v>b.amount).length;
+    hist='<div class="sec-h"><h2>Senaste 8 veckorna</h2><span class="muted">'+(over?over+' över budget':'Alla inom budget')+'</span></div><div class="card whist">'+
+      rows.map(x=>'<div class="wrow'+(x.v>b.amount?' over':'')+'"><span class="muted">v. '+x.w+'</span><span class="bar"><i style="width:'+(x.v/mx*100)+'%"></i><b style="left:'+(b.amount/mx*100)+'%"></b></span><span class="amt num">'+fmt(x.v)+'</span></div>').join('')+'</div>';
+  }
+  openSheet(
+   '<div class="sh-head"><h3 id="sheet-title">Veckobudget</h3><button class="iconbtn" data-act="settings-back" aria-label="Tillbaka till inställningar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button></div>'+
+   '<div class="form">'+
+    '<div class="card bstat"><div class="eyebrow">Vecka '+isoWeek(r.start).week+' · '+(b.scope==='all'?'alla måltider':'lunch')+'</div>'+status+'</div>'+
+    '<form class="form" id="bf" novalidate>'+
+     '<div class="field"><label for="b-amount">Budget per vecka</label><div class="amount" style="padding:10px 16px"><input id="b-amount" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(b.amount?String(b.amount/100).replace('.',','):'')+'" style="font-size:36px"><span>'+esc(curSym())+'</span></div></div>'+
+     '<div class="field"><label id="b-scope-l">Räknas mot budgeten</label><div class="seg" role="group" aria-labelledby="b-scope-l" style="grid-template-columns:1fr 1fr">'+[['lunch','Bara lunch'],['all','Alla måltider']].map(([k,l])=>'<button type="button" data-bscope="'+k+'" aria-pressed="'+(b.scope===k)+'">'+l+'</button>').join('')+'</div><p style="margin:2px 0 0;font-size:13px;color:var(--muted)">Representation räknas aldrig mot budgeten.</p></div>'+
+     '<label class="switch'+(b.warn?' on':'')+'" id="sw-bw"><span class="txt"><b>Varna mig</b><span>När budgeten överskrids, och när 80 % är använt</span></span><span class="tgl"><input type="checkbox" id="b-warn"'+(b.warn?' checked':'')+'><i></i></span></label>'+
+     '<p class="err" id="b-err" hidden></p>'+
+     '<button class="btn primary" type="submit">Spara budget</button>'+
+     (b.amount?'<button class="btn danger" type="button" data-act="budget-off">Ta bort budget</button>':'')+
+    '</form>'+hist+
+   '</div>');
+}
+function saveBudget(){
+  const s=$('#sheet'),raw=s.querySelector('#b-amount').value,amt=parseAmount(raw);
+  if(!(amt>0)){const er=s.querySelector('#b-err');er.textContent='Ange budgeten i kronor per vecka, till exempel 750.';er.hidden=false;return}
+  const sc=s.querySelector('[data-bscope][aria-pressed="true"]');
+  state.settings.budget={amount:amt,scope:sc?sc.dataset.bscope:'lunch',warn:s.querySelector('#b-warn').checked};
+  save();toast('Veckobudget sparad: '+fmt(amt));openBudget();
+}
 
 /* ---------- events ---------- */
 document.addEventListener('click',ev=>{
@@ -667,9 +747,13 @@ document.addEventListener('click',ev=>{
   if(t.dataset.filter){ui.filter=t.dataset.filter;render();return}
   if(t.dataset.meal&&sheetCtx){sheetCtx.e.meal=t.dataset.meal;document.querySelectorAll('[data-meal]').forEach(b=>{const on=b.dataset.meal===t.dataset.meal;b.setAttribute('aria-pressed',on);b.style.color=on?MEALS[b.dataset.meal].c:'inherit'});return}
   if(t.dataset.themePick){state.settings.theme=t.dataset.themePick;save();applyTheme();document.querySelectorAll('[data-theme-pick]').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
+  if(t.dataset.bscope){document.querySelectorAll('[data-bscope]').forEach(x=>x.setAttribute('aria-pressed',x===t));return}
   if(t.dataset.place){$('#f-place').value=t.dataset.place;if(sheetCtx)sheetCtx.typed=true;document.querySelectorAll('.nb').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   const act=t.dataset.act;if(!act)return;
   if(act==='close')closeSheet();
+  else if(act==='budget')openBudget();
+  else if(act==='settings-back')openSettings();
+  else if(act==='budget-off'){if(!t.classList.contains('armed')){t.classList.add('armed');t.textContent='Tryck igen för att ta bort';return}delete state.settings.budget;save();toast('Budgeten är borttagen');openBudget()}
   else if(act==='locate'){if(sheetCtx)sheetCtx.typed=false;const i=$('#f-place');if(i&&!sheetCtx.id)i.value='';locate()}
   else if(act==='today'){ui.anchor=new Date();render()}
   else if(act==='clear-samples'){state.entries=[];state.sampleMode=false;save();render();toast('Exempeldatan är borttagen')}
@@ -689,11 +773,12 @@ document.addEventListener('click',ev=>{
     state.entries=[];state.sampleMode=false;save();closeSheet();render();toast('All data är raderad');
   }
 });
-document.addEventListener('submit',ev=>{if(ev.target.id==='f'){ev.preventDefault();submitEntry()}});
+document.addEventListener('submit',ev=>{if(ev.target.id==='f'){ev.preventDefault();submitEntry()}else if(ev.target.id==='bf'){ev.preventDefault();saveBudget()}});
 document.addEventListener('change',ev=>{
   const t=ev.target;
   if(t.id==='f-repr'){$('#sw').classList.toggle('on',t.checked);$('#sw-sub').textContent=t.checked?'Ange deltagare och syfte nedan':'Av: registreras som personligt utlägg';$('#rf').hidden=!t.checked;if(t.checked)setTimeout(()=>$('#f-guests').focus(),50)}
   else if(t.id==='f-date'&&sheetCtx&&!sheetCtx.id){const d=parseLocal(t.value);if(!isNaN(d)){const m=mealFor(d);const b=document.querySelector('[data-meal="'+m+'"]');b&&b.click()}}
+  else if(t.id==='b-warn'){$('#sw-bw').classList.toggle('on',t.checked)}
   else if(t.id==='s-loc'){state.settings.autoPlace=t.checked;$('#sw-loc').classList.toggle('on',t.checked);save();toast(t.checked?'Restaurang hittas automatiskt':'Automatisk restaurang avstängd')}
   else if(t.id==='s-cur'){state.settings.currency=t.value;save();render();toast('Valuta: '+t.value)}
   else if(t.id==='s-import'&&t.files[0]){
